@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Historical Timeline Map</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { position: absolute; top: 50px; bottom: 0; width: 100%; }
+
+    #timeline {
+      position: absolute;
+      top: 5px;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: white;
+      padding: 5px;
+      z-index: 10;
+      font-family: Arial;
+    }
+
+    #timeline button {
+      margin: 0 4px;
+      font-size: 16px;
+      padding: 4px 10px;
+    }
+
+    #yearDisplay {
+      font-size: 20px;
+      font-weight: bold;
+      margin: 0 10px;
+      width: 80px;
+      text-align: center;
+      border: 1px solid #333;
+      padding: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="timeline">
+  <span>610 AD</span>
+  <button onclick="changeYear(-100)">&#171;</button>
+  <button onclick="changeYear(-10)">&#8249;</button>
+  <div id="yearDisplay">610</div>
+  <button onclick="changeYear(10)">&#8250;</button>
+  <button onclick="changeYear(100)">&#187;</button>
+  <span>1219 AD</span>
+</div>
+
+<div id="map"></div>
+
+<script>
+  mapboxgl.accessToken = 'pk.eyJ1IjoieGlhbnRhbyIsImEiOiJjbTlvbXNmMTMwOWoyMmpzNDBmeGN4ZDZpIn0.1y9K2AQYLdTpU0kC4Ek5Ig';
+
+  const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/light-v11',
+    center: [60, 40],
+    zoom: 3
+  });
+
+  // Скрываем подписи современных стран
+  map.on('style.load', () => {
+    map.getStyle().layers.forEach(layer => {
+      if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
+        map.setLayoutProperty(layer.id, 'visibility', 'none');
+      }
+    });
+  });
+
+  let currentYear = 610;
+  let geojsonLayerId = null;
+
+  function loadGeojson(year) {
+    const fileName = `${year}.geojson`;
+
+    // Удаляем старые слои и источники
+    if (geojsonLayerId) {
+      if (map.getLayer(geojsonLayerId)) map.removeLayer(geojsonLayerId);
+      if (map.getLayer(geojsonLayerId + '-border')) map.removeLayer(geojsonLayerId + '-border');
+      if (map.getSource(geojsonLayerId)) map.removeSource(geojsonLayerId);
+    }
+
+    fetch(fileName)
+      .then(response => response.json())
+      .then(data => {
+        geojsonLayerId = `layer-${year}`;
+        map.addSource(geojsonLayerId, {
+          type: 'geojson',
+          data: data
+        });
+
+        map.addLayer({
+          id: geojsonLayerId,
+          type: 'fill',
+          source: geojsonLayerId,
+          paint: {
+            'fill-color': ['get', 'fill'], // из GeoJSON
+            'fill-opacity': 0.5
+          }
+        });
+
+        map.addLayer({
+          id: geojsonLayerId + '-border',
+          type: 'line',
+          source: geojsonLayerId,
+          paint: {
+            'line-color': ['get', 'stroke'], // из GeoJSON
+            'line-width': 1
+          }
+        });
+
+        map.on('click', geojsonLayerId, (e) => {
+          const props = e.features[0].properties;
+          new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(`<strong>${props.name || ''}</strong><br>${props.description || ''}`)
+            .addTo(map);
+        });
+      })
+      .catch(error => {
+        console.log(`Карта для ${year} не найдена.`);
+      });
+  }
+
+  function changeYear(offset) {
+    let newYear = currentYear + offset;
+    if (newYear < 610) newYear = 610;
+    if (newYear > 1219) newYear = 1219;
+    newYear = Math.floor(newYear / 10) * 10;
+    currentYear = newYear;
+    document.getElementById('yearDisplay').innerText = newYear;
+    loadGeojson(newYear);
+  }
+
+  map.on('load', () => {
+    loadGeojson(currentYear);
+  });
+</script>
+
+</body>
+</html>
